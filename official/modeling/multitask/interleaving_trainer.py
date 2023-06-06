@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,9 +31,7 @@ class MultiTaskInterleavingTrainer(base_trainer.MultiTaskBaseTrainer):
                multi_task: multitask.MultiTask,
                multi_task_model: Union[tf.keras.Model,
                                        base_model.MultiTaskBaseModel],
-               optimizer: Union[tf.optimizers.Optimizer,
-                                tf.keras.optimizers.experimental.Optimizer,
-                                tf.keras.optimizers.legacy.Optimizer],
+               optimizer: tf.optimizers.Optimizer,
                task_sampler: sampler.TaskSampler,
                trainer_options=None):
     super().__init__(
@@ -70,13 +68,6 @@ class MultiTaskInterleavingTrainer(base_trainer.MultiTaskBaseTrainer):
     self._task_step_counters = {
         name: orbit.utils.create_global_step() for name in self.multi_task.tasks
     }
-
-    # If the new Keras optimizer is used, we require all model variables are
-    # created before the training and let the optimizer to create the slot
-    # variable all together.
-    if isinstance(optimizer, tf.keras.optimizers.experimental.Optimizer):
-      multi_task_model.build()
-      optimizer.build(multi_task_model.trainable_variables)
 
   def task_step_counter(self, name):
     return self._task_step_counters[name]

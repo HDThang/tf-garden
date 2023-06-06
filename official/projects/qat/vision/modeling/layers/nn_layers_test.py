@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,15 +24,12 @@ from official.projects.qat.vision.modeling.layers import nn_layers
 class NNLayersTest(parameterized.TestCase, tf.test.TestCase):
 
   @parameterized.parameters(
-      ('deeplabv3plus', 1, 128, 128),
-      ('deeplabv3plus', 2, 128, 128),
-      ('deeplabv3', 1, 128, 64),
-      ('deeplabv3', 2, 128, 64),
-      ('deeplabv3plus_sum_to_merge', 1, 64, 128),
-      ('deeplabv3plus_sum_to_merge', 2, 64, 128),
+      ('deeplabv3plus', 1),
+      ('deeplabv3plus', 2),
+      ('deeplabv3', 1),
+      ('deeplabv3', 2),
   )
-  def test_segmentation_head_creation(self, feature_fusion, upsample_factor,
-                                      low_level_num_filters, expected_shape):
+  def test_segmentation_head_creation(self, feature_fusion, upsample_factor):
     input_size = 128
     decoder_outupt_size = input_size // 2
 
@@ -45,11 +42,14 @@ class NNLayersTest(parameterized.TestCase, tf.test.TestCase):
         level=4,
         upsample_factor=upsample_factor,
         low_level=2,
-        low_level_num_filters=low_level_num_filters,
+        low_level_num_filters=128,
         feature_fusion=feature_fusion)
 
     features = segmentation_head((backbone_output, decoder_output))
 
+    expected_shape = (
+        input_size
+        if feature_fusion == 'deeplabv3plus' else decoder_outupt_size)
     self.assertAllEqual([
         2, expected_shape * upsample_factor, expected_shape * upsample_factor, 5
     ], features.shape.as_list())
@@ -90,43 +90,6 @@ class NNLayersTest(parameterized.TestCase, tf.test.TestCase):
 
     self.assertAllEqual([2, input_size, input_size, num_filters],
                         feats.shape.as_list())
-
-  @parameterized.parameters(False, True)
-  def test_bnorm_wrapper_creation(self, use_sync_bn):
-    inputs = tf.keras.Input(shape=(64, 64, 128), dtype=tf.float32)
-    if use_sync_bn:
-      norm = tf.keras.layers.experimental.SyncBatchNormalization(axis=-1)
-    else:
-      norm = tf.keras.layers.BatchNormalization(axis=-1)
-    layer = nn_layers.BatchNormalizationWrapper(norm)
-    output = layer(inputs)
-    self.assertAllEqual([None, 64, 64, 128], output.shape)
-
-  @parameterized.parameters(
-      (1, 1, 64, [4, 4]),
-      (2, 1, 64, [4, 4]),
-      (3, 1, 64, [4, 4]),
-      (1, 2, 32, [8, 8]),
-      (2, 2, 32, [8, 8]),
-      (3, 2, 32, [8, 8]),
-  )
-  def test_mask_scoring_creation(
-      self, num_convs, num_fcs, num_filters, fc_input_size
-  ):
-    inputs = tf.keras.Input(shape=(64, 64, 16), dtype=tf.float32)
-
-    head = nn_layers.MaskScoringQuantized(
-        num_classes=2,
-        num_convs=num_convs,
-        num_filters=num_filters,
-        fc_dims=128,
-        num_fcs=num_fcs,
-        fc_input_size=fc_input_size,
-        use_depthwise_convolution=True,
-    )
-
-    scores = head(inputs)
-    self.assertAllEqual(scores.shape.as_list(), [None, 2])
 
 
 if __name__ == '__main__':

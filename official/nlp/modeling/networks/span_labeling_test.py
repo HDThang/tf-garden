@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,10 +16,14 @@
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.keras import keras_parameterized  # pylint: disable=g-direct-tensorflow-import
 from official.nlp.modeling.networks import span_labeling
 
 
-class SpanLabelingTest(tf.test.TestCase):
+# This decorator runs the test in V1, V2-Eager, and V2-Functional mode. It
+# guarantees forward compatibility of this code for the V2 switchover.
+@keras_parameterized.run_all_keras_modes
+class SpanLabelingTest(keras_parameterized.TestCase):
 
   def test_network_creation(self):
     """Validate that the Keras object can be created."""
@@ -161,7 +165,8 @@ class SpanLabelingTest(tf.test.TestCase):
       _ = span_labeling.SpanLabeling(input_width=10, output='bad')
 
 
-class XLNetSpanLabelingTest(tf.test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class XLNetSpanLabelingTest(keras_parameterized.TestCase):
 
   def test_basic_invocation_train(self):
     batch_size = 2
@@ -277,8 +282,8 @@ class XLNetSpanLabelingTest(tf.test.TestCase):
 
     # Test `call` with training flag.
     # Note: this fails due to incompatibility with the functional API.
-    with self.assertRaisesRegex(AssertionError,
-                                'Could not compute output KerasTensor'):
+    with self.assertRaisesRegexp(AssertionError,
+                                 'Could not compute output KerasTensor'):
       model(inputs, training=True)
 
   def test_serialize_deserialize(self):

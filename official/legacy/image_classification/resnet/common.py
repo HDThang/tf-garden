@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -81,18 +81,17 @@ class PiecewiseConstantDecayWithWarmup(
 
   def _get_learning_rate(self, step):
     """Compute learning rate at given step."""
-    step = tf.cast(step, dtype=tf.float32)
-    warmup_steps = tf.cast(self.warmup_steps, dtype=tf.float32)
     with tf.name_scope('PiecewiseConstantDecayWithWarmup'):
 
       def warmup_lr(step):
-        return self.rescaled_lr * (step / warmup_steps)
+        return self.rescaled_lr * (
+            tf.cast(step, tf.float32) / tf.cast(self.warmup_steps, tf.float32))
 
       def piecewise_lr(step):
         return tf.compat.v1.train.piecewise_constant(step, self.step_boundaries,
                                                      self.lr_values)
 
-      return tf.cond(step < warmup_steps, lambda: warmup_lr(step),
+      return tf.cond(step < self.warmup_steps, lambda: warmup_lr(step),
                      lambda: piecewise_lr(step))
 
   def get_config(self):
@@ -106,14 +105,10 @@ class PiecewiseConstantDecayWithWarmup(
     }
 
 
-def get_optimizer(learning_rate=0.1, use_legacy_optimizer=True):
+def get_optimizer(learning_rate=0.1):
   """Returns optimizer to use."""
   # The learning_rate is overwritten at the beginning of each step by callback.
-  if use_legacy_optimizer:
-    return tf.keras.optimizers.legacy.SGD(
-        learning_rate=learning_rate, momentum=0.9)
-  else:
-    return tf.keras.optimizers.SGD(learning_rate=learning_rate, momentum=0.9)
+  return tf.keras.optimizers.SGD(learning_rate=learning_rate, momentum=0.9)
 
 
 def get_callbacks(pruning_method=None,

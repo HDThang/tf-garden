@@ -63,7 +63,6 @@ student_model:
     type: mobilebert
   mlm_activation: relu
   mlm_initializer_range: 0.02
-  mlm_output_weights_use_proj: true
 teacher_model:
   cls_heads: []
   encoder:

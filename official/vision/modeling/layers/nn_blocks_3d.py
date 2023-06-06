@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -130,8 +130,11 @@ class BottleneckBlock3D(tf.keras.layers.Layer):
     self._norm_epsilon = norm_epsilon
     self._kernel_regularizer = kernel_regularizer
     self._bias_regularizer = bias_regularizer
-    self._norm = tf.keras.layers.BatchNormalization
 
+    if use_sync_bn:
+      self._norm = tf.keras.layers.experimental.SyncBatchNormalization
+    else:
+      self._norm = tf.keras.layers.BatchNormalization
     if tf.keras.backend.image_data_format() == 'channels_last':
       self._bn_axis = -1
     else:
@@ -152,14 +155,13 @@ class BottleneckBlock3D(tf.keras.layers.Layer):
             self._temporal_strides, self._spatial_strides, self._spatial_strides
         ],
         use_bias=False,
-        kernel_initializer=tf_utils.clone_initializer(self._kernel_initializer),
+        kernel_initializer=self._kernel_initializer,
         kernel_regularizer=self._kernel_regularizer,
         bias_regularizer=self._bias_regularizer)
     self._norm0 = self._norm(
         axis=self._bn_axis,
         momentum=self._norm_momentum,
-        epsilon=self._norm_epsilon,
-        synchronized=self._use_sync_bn)
+        epsilon=self._norm_epsilon)
 
     self._temporal_conv = tf.keras.layers.Conv3D(
         filters=self._filters,
@@ -167,14 +169,13 @@ class BottleneckBlock3D(tf.keras.layers.Layer):
         strides=[self._temporal_strides, 1, 1],
         padding='same',
         use_bias=False,
-        kernel_initializer=tf_utils.clone_initializer(self._kernel_initializer),
+        kernel_initializer=self._kernel_initializer,
         kernel_regularizer=self._kernel_regularizer,
         bias_regularizer=self._bias_regularizer)
     self._norm1 = self._norm(
         axis=self._bn_axis,
         momentum=self._norm_momentum,
-        epsilon=self._norm_epsilon,
-        synchronized=self._use_sync_bn)
+        epsilon=self._norm_epsilon)
 
     self._spatial_conv = tf.keras.layers.Conv3D(
         filters=self._filters,
@@ -182,14 +183,13 @@ class BottleneckBlock3D(tf.keras.layers.Layer):
         strides=[1, self._spatial_strides, self._spatial_strides],
         padding='same',
         use_bias=False,
-        kernel_initializer=tf_utils.clone_initializer(self._kernel_initializer),
+        kernel_initializer=self._kernel_initializer,
         kernel_regularizer=self._kernel_regularizer,
         bias_regularizer=self._bias_regularizer)
     self._norm2 = self._norm(
         axis=self._bn_axis,
         momentum=self._norm_momentum,
-        epsilon=self._norm_epsilon,
-        synchronized=self._use_sync_bn)
+        epsilon=self._norm_epsilon)
 
     self._expand_conv = tf.keras.layers.Conv3D(
         filters=4 * self._filters,
@@ -197,14 +197,13 @@ class BottleneckBlock3D(tf.keras.layers.Layer):
         strides=[1, 1, 1],
         padding='same',
         use_bias=False,
-        kernel_initializer=tf_utils.clone_initializer(self._kernel_initializer),
+        kernel_initializer=self._kernel_initializer,
         kernel_regularizer=self._kernel_regularizer,
         bias_regularizer=self._bias_regularizer)
     self._norm3 = self._norm(
         axis=self._bn_axis,
         momentum=self._norm_momentum,
-        epsilon=self._norm_epsilon,
-        synchronized=self._use_sync_bn)
+        epsilon=self._norm_epsilon)
 
     if self._se_ratio and self._se_ratio > 0 and self._se_ratio <= 1:
       self._squeeze_excitation = nn_layers.SqueezeExcitation(
@@ -212,8 +211,7 @@ class BottleneckBlock3D(tf.keras.layers.Layer):
           out_filters=self._filters * 4,
           se_ratio=self._se_ratio,
           use_3d_input=True,
-          kernel_initializer=tf_utils.clone_initializer(
-              self._kernel_initializer),
+          kernel_initializer=self._kernel_initializer,
           kernel_regularizer=self._kernel_regularizer,
           bias_regularizer=self._bias_regularizer)
     else:

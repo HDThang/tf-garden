@@ -1,4 +1,4 @@
-# Copyright 2023 The Orbit Authors. All Rights Reserved.
+# Copyright 2022 The Orbit Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 import pprint
 import time
 
-from typing import Callable, Iterable, Optional, Union
+from typing import Callable, List, Optional, Union
 
 from absl import logging
 
@@ -74,13 +74,13 @@ class Controller:
   other custom outer loop implementations easy to achieve.
 
   Some additional customization can be achieved by supplying `train_actions` or
-  `eval_actions` when constructing the `Controller`. Actions arbitrary callables
-  that are applied by the `Controller` to the output of train steps (after each
-  inner loop of `steps_per_loop` steps) or an evaluation. This provides a hook
-  mechanism, enabling things like reporting metrics to Vizier, model exporting,
-  additional logging, etc. See the `orbit.actions` package for a small handful
-  of predefined actions and some utility classes that may be useful in defining
-  your own.
+  `eval_actions` when constructing the `Controller`. These are just lists of
+  arbitrary callables that are applied by the `Controller` to the output of
+  train steps (after each inner loop of `steps_per_loop` steps) or an
+  evaluation. This provides a hook mechanism, enabling things like reporting
+  metrics to Vizier, model exporting, additional logging, etc. See the
+  `orbit.actions` package for a small handful of predefined actions and some
+  utility classes that may be useful in defining your own.
   """
 
   def __init__(
@@ -91,19 +91,17 @@ class Controller:
       evaluator: Optional[runner.AbstractEvaluator] = None,
       strategy: Optional[tf.distribute.Strategy] = None,
       # Actions
-      train_actions: Optional[Iterable[Action]] = None,
-      eval_actions: Optional[Iterable[Action]] = None,
+      train_actions: Optional[List[Action]] = None,
+      eval_actions: Optional[List[Action]] = None,
       # Train related
-      steps_per_loop: Optional[Union[int, Callable[[int], int]]] = None,
+      steps_per_loop: Optional[int] = None,
       checkpoint_manager: Optional[tf.train.CheckpointManager] = None,
-      enable_async_checkpointing: bool = False,
       # Summary related
       summary_interval: Optional[int] = None,
       summary_dir: Optional[str] = None,
       # Evaluation related
       eval_summary_dir: Optional[str] = None,
-      summary_manager: Optional[utils.SummaryManagerInterface] = None,
-      eval_summary_manager: Optional[utils.SummaryManagerInterface] = None):
+  ):
     """Initializes a `Controller` instance.
 
     Note that if `checkpoint_manager` is provided and there are checkpoints in
@@ -127,23 +125,19 @@ class Controller:
       strategy: An instance of `tf.distribute.Strategy`. If not provided, the
         strategy will be initialized from the current in-scope strategy using
         `tf.distribute.get_strategy()`.
-      train_actions: Optional `orbit.Action`s to call after each block of
-        `steps_per_loop` training steps are run. These will be called with the
-        output of `trainer.train`.
-      eval_actions: Optional `orbit.Action`s to call after each evaluation.
-        These will be called with the output of `evaluator.evaluate`.
-      steps_per_loop: Optional integer to indicate the number of steps to run in
-        each inner loop of training (passed as the `num_steps` parameter of
-        `trainer.train`). It can be also a callable which takes the current
-        global step value as input and returns the number of steps to run as
-        output.
+      train_actions: An optional list of `orbit.Action`s to call after each
+        block of `steps_per_loop` training steps are run. These will be called
+        with the output of `trainer.train`.
+      eval_actions: An optional list of `orbit.Action`s to call after each
+        evaluation. These will be called with the output of
+        `evaluator.evaluate`.
+      steps_per_loop: The number of steps to run in each inner loop of training
+        (passed as the `num_steps` parameter of `trainer.train`).
       checkpoint_manager: An instance of `tf.train.CheckpointManager`. If
         provided and there are checkpoints in the associated model directory,
         the model will be restored from the most recent checkpoint inside this
         `__init__` method. If not provided, the `Controller` will not
         automatically save to or restore from checkpoints.
-      enable_async_checkpointing: Optional bool indicating whether to enable
-        async checkpoint saving.
       summary_interval: Step interval for training summaries. Note that this
         argument only applies to `tf.summary` calls inside the `trainer.train`
         function. Summaries written by the `Controller` (specifically
@@ -156,18 +150,10 @@ class Controller:
       eval_summary_dir: The directory to write eval summaries to. If `None`, it
         will be set to `summary_dir`. If both `summary_dir` and
         `eval_summary_dir` are `None`, no eval summaries will be written.
-      summary_manager: Instance of the summary manager. If set, the
-        `summary_dir` will be ignored. Otherwise the summary manager will be
-        created internally for TensorBoard summaries by default from the
-        `summary_dir`.
-      eval_summary_manager: Instance of the eval summary manager. If set, the
-        `eval_summary_dir` will be ignored. Otherwise the eval summary manager
-        will be created internally for TensorBoard summaries by default from the
-        `eval_summary_dir`.
 
     Raises:
       ValueError: If both `trainer` and `evaluator` are `None`.
-      ValueError: If `steps_per_loop` is not a positive integer or a callable.
+      ValueError: If `steps_per_loop` is not a positive integer.
       ValueError: If `summary_interval` is not a positive integer or is not
         divisible by `steps_per_loop`.
     """
@@ -178,18 +164,15 @@ class Controller:
       if steps_per_loop is None:
         raise ValueError(
             "`steps_per_loop` is required when `trainer` is provided.")
-      elif not callable(steps_per_loop) and (
-          not isinstance(steps_per_loop, int) or steps_per_loop < 1):
+      elif not isinstance(steps_per_loop, int) or steps_per_loop < 1:
         raise ValueError(
-            f"`steps_per_loop` ({steps_per_loop}) must be a positive integer "
-            "or a callable.")
+            f"`steps_per_loop` ({steps_per_loop}) must be a positive integer.")
 
       if summary_interval is not None:
         if summary_interval <= 0:
           raise ValueError(
               f"`summary_interval` ({summary_interval}) must be larger than 0.")
-        elif not callable(steps_per_loop) and (summary_interval % steps_per_loop
-                                               != 0):
+        elif summary_interval % steps_per_loop != 0:
           raise ValueError(
               f"`summary interval` ({summary_interval}) must be a multiple "
               f"of `steps_per_loop` ({steps_per_loop}).")
@@ -202,25 +185,18 @@ class Controller:
 
     self.strategy = strategy or tf.distribute.get_strategy()
 
-    self.train_actions = () if train_actions is None else tuple(train_actions)
-    self.eval_actions = () if eval_actions is None else tuple(eval_actions)
+    self.train_actions = train_actions or []
+    self.eval_actions = eval_actions or []
 
     self.global_step = global_step
     self.checkpoint_manager = checkpoint_manager
-    self._enable_async_checkpoint_saving = enable_async_checkpointing
-    self._checkpoint_options = tf.train.CheckpointOptions(
-        enable_async=enable_async_checkpointing
-    )
 
     if self.trainer is not None:
       self.step_timer = None
+      self.steps_per_loop = steps_per_loop
       self.summary_interval = summary_interval
-      if summary_manager:
-        self.summary_manager = summary_manager
-      else:
-        self.summary_manager = utils.SummaryManager(
-            summary_dir, tf.summary.scalar, global_step=self.global_step)
-      self._steps_per_loop = steps_per_loop
+      self.summary_manager = utils.SummaryManager(
+          summary_dir, tf.summary.scalar, global_step=self.global_step)
 
     if self.evaluator is not None:
       eval_summary_dir = eval_summary_dir or summary_dir
@@ -229,11 +205,8 @@ class Controller:
         # are the same.
         self.eval_summary_manager = self.summary_manager
       else:
-        if eval_summary_manager:
-          self.eval_summary_manager = eval_summary_manager
-        else:
-          self.eval_summary_manager = utils.SummaryManager(
-              eval_summary_dir, tf.summary.scalar, global_step=self.global_step)
+        self.eval_summary_manager = utils.SummaryManager(
+            eval_summary_dir, tf.summary.scalar, global_step=self.global_step)
 
     tf.summary.experimental.set_step(self.global_step)
 
@@ -250,10 +223,6 @@ class Controller:
     count is equal to `steps`. It will additionally save checkpoints (if a
     `CheckpointManager` was passed to `Controller.__init__`) and summarize
     training output (if `summary_dir` is set).
-
-    When async checkpointing is enabled, a sync is triggered at the end of this
-    method to make sure any ongoing async checkpoint saving is finished before
-    returning.
 
     Args:
       steps: The global step count to train up to.
@@ -274,8 +243,6 @@ class Controller:
 
     if checkpoint_at_completion:
       self._maybe_save_checkpoint(check_interval=False)
-
-    self._sync_on_async_checkpointing()
 
   def evaluate(self, steps: int = -1) -> Optional[runner.Output]:
     """Runs evaluation for the given number of steps.
@@ -320,16 +287,7 @@ class Controller:
       action(eval_output)
     eval_output = tf.nest.map_structure(utils.get_value, eval_output)
 
-    if steps > 0:
-      # Only log if steps has been specified.
-      steps_per_second = steps / elapsed
-      eval_output["steps_per_second"] = steps_per_second
-      steps_per_second_log = f"steps/sec: {steps_per_second: 6.1f} | "
-    else:
-      steps_per_second_log = ""
-
     _log(f" eval | step: {current_step: 6d} | "
-         f"{steps_per_second_log}"
          f"eval time: {elapsed: 6.1f} sec | "
          f"output: {_format_output(eval_output)}")
 
@@ -338,12 +296,10 @@ class Controller:
 
     return eval_output
 
-  def train_and_evaluate(
-      self,
-      train_steps: int,
-      eval_steps: int = -1,
-      eval_interval: Optional[int] = None,
-  ) -> Optional[runner.Output]:
+  def train_and_evaluate(self,
+                         train_steps: int,
+                         eval_steps: int = -1,
+                         eval_interval: Optional[int] = None) -> None:
     """Runs interleaved training and evaluation.
 
     This method interleaves calls to `self.train()` and `self.evaluate()`,
@@ -351,10 +307,6 @@ class Controller:
     running an evaluation for `eval_steps` every `eval_interval` training steps.
     In addition, this method will run a final evaluation at the end of the
     training sequence.
-
-    When async checkpointing is enabled, a sync is triggered at the end of this
-    method to make sure any ongoing async checkpoint saving is finished before
-    returning.
 
     Args:
       train_steps: The global step count to train up to.
@@ -366,31 +318,26 @@ class Controller:
         setting. If None, evaluation will only be performed after training is
         complete.
 
-    Returns:
-      The evaluation results as a dictionary mapping names to NumPy values.
+    Raises:
+      ValueError: If eval_interval is not a multiple of self.steps_per_loop.
     """
     self._require("trainer", for_method="train_and_evaluate")
     self._require("evaluator", for_method="train_and_evaluate")
 
-    output = None
     current_step = self.global_step.numpy()  # Cache, since this is expensive.
     eval_interval = eval_interval or (train_steps - current_step)
     while current_step < train_steps:
       interval = min(train_steps - current_step, eval_interval)
       num_steps = current_step + interval
       self.train(steps=num_steps, checkpoint_at_completion=False)
-      output = self.evaluate(steps=eval_steps)
+      self.evaluate(steps=eval_steps)
       current_step = self.global_step.numpy()
     self._maybe_save_checkpoint(check_interval=False)
-    self._sync_on_async_checkpointing()
-    return output
 
-  def evaluate_continuously(
-      self,
-      steps: int = -1,
-      timeout: Optional[Union[int, float]] = None,
-      timeout_fn: Optional[Callable[[], bool]] = None,
-  ) -> Optional[runner.Output]:
+  def evaluate_continuously(self,
+                            steps: int = -1,
+                            timeout: Optional[Union[int, float]] = None,
+                            timeout_fn: Optional[Callable[[], bool]] = None):
     """Continuously monitors a directory and evaluates new checkpoints in it.
 
     This method continuously monitors a directory as specified by this
@@ -406,9 +353,6 @@ class Controller:
         returns True, then it means that no new checkpoints will be generated
         and the iterator will exit.
 
-    Returns:
-      The evaluation results as a dictionary mapping names to NumPy values.
-
     Raises:
       ValueError: If no checkpoint found in `self.checkpoint_manager.directory`.
       ValueError: If `evaluator` was not provided as a controller init arg.
@@ -416,14 +360,12 @@ class Controller:
     self._require("evaluator", for_method="evaluate_continuously")
     self._require("checkpoint_manager", for_method="evaluate_continuously")
 
-    output = None
     for checkpoint_path in tf.train.checkpoints_iterator(
         self.checkpoint_manager.directory,
         timeout=timeout,
         timeout_fn=timeout_fn):
       self.restore_checkpoint(checkpoint_path)
-      output = self.evaluate(steps)
-    return output
+      self.evaluate(steps)
 
   def restore_checkpoint(self, checkpoint_path: Optional[str] = None):
     """Restores the model from a checkpoint.
@@ -451,6 +393,8 @@ class Controller:
 
     if checkpoint_path is not None:
       _log(f"restored model from {checkpoint_path}.")
+    else:
+      _log("initialized model.")
 
     return checkpoint_path
 
@@ -466,13 +410,6 @@ class Controller:
     """
     self._require("checkpoint_manager", for_method="save_checkpoint")
     self._maybe_save_checkpoint(check_interval=False)
-
-  @property
-  def steps_per_loop(self):
-    """Returns current steps_per_loop value in a training loop."""
-    if callable(self._steps_per_loop):
-      return self._steps_per_loop(self.global_step.numpy())
-    return self._steps_per_loop
 
   def _train_n_steps(self, num_steps: int):
     """Runs training for `num_steps` steps.
@@ -544,8 +481,7 @@ class Controller:
     if self.checkpoint_manager and self.checkpoint_manager.checkpoint_interval:
       ckpt_path = self.checkpoint_manager.save(
           checkpoint_number=self.global_step.numpy(),
-          check_interval=check_interval,
-          options=self._checkpoint_options)
+          check_interval=check_interval)
       if ckpt_path is not None:
         _log(f"saved checkpoint to {ckpt_path}.")
         return True
@@ -557,13 +493,6 @@ class Controller:
       raise ValueError(
           f"`{attribute}` is not set. Pass `{attribute}` to "
           f"`Controller.__init__` before calling `{for_method}()`.")
-
-  def _sync_on_async_checkpointing(self):
-    """Force to wait for the async checkpoint saving (if any) to finish."""
-    # pylint: disable=protected-access
-    if self.checkpoint_manager:
-      logging.info("Sync on async checkpoint saving.")
-      self.checkpoint_manager.sync()
 
 
 class StepTimer:

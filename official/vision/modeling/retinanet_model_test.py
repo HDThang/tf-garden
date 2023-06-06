@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -100,10 +100,7 @@ class RetinaNetTest(parameterized.TestCase, tf.test.TestCase):
       anchor_boxes = None
 
     if has_att_heads:
-      attribute_heads = [
-          dict(
-              name='depth', type='regression', size=1, prediction_tower_name='')
-      ]
+      attribute_heads = [dict(name='depth', type='regression', size=1)]
     else:
       attribute_heads = None
 
@@ -186,13 +183,7 @@ class RetinaNetTest(parameterized.TestCase, tf.test.TestCase):
           max_level=max_level)
 
       if has_att_heads:
-        attribute_heads = [
-            dict(
-                name='depth',
-                type='regression',
-                size=1,
-                prediction_tower_name='')
-        ]
+        attribute_heads = [dict(name='depth', type='regression', size=1)]
       else:
         attribute_heads = None
       head = dense_prediction_heads.RetinaNetHead(

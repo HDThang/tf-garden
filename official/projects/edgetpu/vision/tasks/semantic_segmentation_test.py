@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -90,14 +90,11 @@ class SemanticSegmentationTaskTest(tf.test.TestCase, parameterized.TestCase):
 
 class AutosegEdgeTPUTaskTest(tf.test.TestCase, parameterized.TestCase):
 
-  @parameterized.parameters(
-      ('autoseg_edgetpu_xs',), ('autoseg_edgetpu_s',), ('autoseg_edgetpu_m',)
-  )
+  @parameterized.parameters(('autoseg_edgetpu_xs',))
   def test_task(self, config_name):
     config_to_backbone_mapping = {
         'autoseg_edgetpu_xs': 'autoseg_edgetpu_backbone_xs',
-        'autoseg_edgetpu_s': 'autoseg_edgetpu_backbone_s',
-        'autoseg_edgetpu_m': 'autoseg_edgetpu_backbone_m',
+        'autoseg_edgetpu_s': 'autoseg_edgetpu_backone_s'
     }
     config = autoseg_cfg.autoseg_edgetpu_experiment_config(
         config_to_backbone_mapping[config_name], init_backbone=False)

@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,13 +20,11 @@ tf.train.Checkpoint for object based saving and loading and tf.saved_model.save
 for graph serializaiton.
 """
 import math
-from typing import Any, List
-
 import tensorflow as tf
 
 from official.modeling import tf_utils
 from official.projects.detr.modeling import transformer
-from official.vision.ops import box_ops
+from official.vision.modeling.backbones import resnet
 
 
 def position_embedding_sine(attention_mask,
@@ -95,35 +93,6 @@ def position_embedding_sine(attention_mask,
   return embeddings
 
 
-def postprocess(outputs: dict[str, tf.Tensor]) -> dict[str, tf.Tensor]:
-  """Performs post-processing on model output.
-
-  Args:
-    outputs: The raw model output.
-
-  Returns:
-    Postprocessed model output.
-  """
-  predictions = {
-      "detection_boxes":  # Box coordinates are relative values here.
-          box_ops.cycxhw_to_yxyx(outputs["box_outputs"]),
-      "detection_scores":
-          tf.math.reduce_max(
-              tf.nn.softmax(outputs["cls_outputs"])[:, :, 1:], axis=-1),
-      "detection_classes":
-          tf.math.argmax(outputs["cls_outputs"][:, :, 1:], axis=-1) + 1,
-      # Fix this. It's not being used at the moment.
-      "num_detections":
-          tf.reduce_sum(
-              tf.cast(
-                  tf.math.greater(
-                      tf.math.reduce_max(outputs["cls_outputs"], axis=-1), 0),
-                  tf.int32),
-              axis=-1)
-  }
-  return predictions
-
-
 class DETR(tf.keras.Model):
   """DETR model with Keras.
 
@@ -131,12 +100,7 @@ class DETR(tf.keras.Model):
   class and box heads.
   """
 
-  def __init__(self,
-               backbone,
-               backbone_endpoint_name,
-               num_queries,
-               hidden_size,
-               num_classes,
+  def __init__(self, num_queries, hidden_size, num_classes,
                num_encoder_layers=6,
                num_decoder_layers=6,
                dropout_rate=0.1,
@@ -150,17 +114,13 @@ class DETR(tf.keras.Model):
     self._dropout_rate = dropout_rate
     if hidden_size % 2 != 0:
       raise ValueError("hidden_size must be a multiple of 2.")
-    self._backbone = backbone
-    self._backbone_endpoint_name = backbone_endpoint_name
+    # TODO(frederickliu): Consider using the backbone factory.
+    # TODO(frederickliu): Add to factory once we get skeleton code in.
+    self._backbone = resnet.ResNet(50, bn_trainable=False)
 
   def build(self, input_shape=None):
     self._input_proj = tf.keras.layers.Conv2D(
         self._hidden_size, 1, name="detr/conv2d")
-    self._build_detection_decoder()
-    super().build(input_shape)
-
-  def _build_detection_decoder(self):
-    """Builds detection decoder."""
     self._transformer = DETRTransformer(
         num_encoder_layers=self._num_encoder_layers,
         num_decoder_layers=self._num_decoder_layers,
@@ -191,6 +151,7 @@ class DETR(tf.keras.Model):
                 -sqrt_k, sqrt_k),
             name="detr/box_dense_2")]
     self._sigmoid = tf.keras.layers.Activation("sigmoid")
+    super().build(input_shape)
 
   @property
   def backbone(self) -> tf.keras.Model:
@@ -198,8 +159,6 @@ class DETR(tf.keras.Model):
 
   def get_config(self):
     return {
-        "backbone": self._backbone,
-        "backbone_endpoint_name": self._backbone_endpoint_name,
         "num_queries": self._num_queries,
         "hidden_size": self._hidden_size,
         "num_classes": self._num_classes,
@@ -212,21 +171,15 @@ class DETR(tf.keras.Model):
   def from_config(cls, config):
     return cls(**config)
 
-  def _generate_image_mask(self, inputs: tf.Tensor,
-                           target_shape: tf.Tensor) -> tf.Tensor:
-    """Generates image mask from input image."""
+  def call(self, inputs):
+    batch_size = tf.shape(inputs)[0]
     mask = tf.expand_dims(
         tf.cast(tf.not_equal(tf.reduce_sum(inputs, axis=-1), 0), inputs.dtype),
         axis=-1)
-    mask = tf.image.resize(
-        mask, target_shape, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-    return mask
-
-  def call(self, inputs: tf.Tensor, training: bool = None) -> List[Any]:  # pytype: disable=signature-mismatch  # overriding-parameter-count-checks
-    batch_size = tf.shape(inputs)[0]
-    features = self._backbone(inputs)[self._backbone_endpoint_name]
+    features = self._backbone(inputs)["5"]
     shape = tf.shape(features)
-    mask = self._generate_image_mask(inputs, shape[1: 3])
+    mask = tf.image.resize(
+        mask, shape[1:3], method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
 
     pos_embed = position_embedding_sine(
         mask[:, :, :, 0], num_pos_features=self._hidden_size)
@@ -255,10 +208,7 @@ class DETR(tf.keras.Model):
         box_out = layer(box_out)
       output_coord = self._sigmoid(box_out)
       out = {"cls_outputs": output_class, "box_outputs": output_coord}
-      if not training:
-        out.update(postprocess(out))
       out_list.append(out)
-
     return out_list
 
 
@@ -273,16 +223,13 @@ class DETRTransformer(tf.keras.layers.Layer):
     self._num_decoder_layers = num_decoder_layers
 
   def build(self, input_shape=None):
-    if self._num_encoder_layers > 0:
-      self._encoder = transformer.TransformerEncoder(
-          attention_dropout_rate=self._dropout_rate,
-          dropout_rate=self._dropout_rate,
-          intermediate_dropout=self._dropout_rate,
-          norm_first=False,
-          num_layers=self._num_encoder_layers)
-    else:
-      self._encoder = None
-
+    self._encoder = transformer.TransformerEncoder(
+        attention_dropout_rate=self._dropout_rate,
+        dropout_rate=self._dropout_rate,
+        intermediate_dropout=self._dropout_rate,
+        norm_first=False,
+        num_layers=self._num_encoder_layers,
+    )
     self._decoder = transformer.TransformerDecoder(
         attention_dropout_rate=self._dropout_rate,
         dropout_rate=self._dropout_rate,
@@ -306,12 +253,8 @@ class DETRTransformer(tf.keras.layers.Layer):
     input_shape = tf_utils.get_shape_list(sources)
     source_attention_mask = tf.tile(
         tf.expand_dims(mask, axis=1), [1, input_shape[1], 1])
-    if self._encoder is not None:
-      memory = self._encoder(
-          sources, attention_mask=source_attention_mask, pos_embed=pos_embed)
-    else:
-      memory = sources
-
+    memory = self._encoder(
+        sources, attention_mask=source_attention_mask, pos_embed=pos_embed)
     target_shape = tf_utils.get_shape_list(targets)
     cross_attention_mask = tf.tile(
         tf.expand_dims(mask, axis=1), [1, target_shape[1], 1])

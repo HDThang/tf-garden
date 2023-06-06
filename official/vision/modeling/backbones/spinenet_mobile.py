@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -137,7 +137,7 @@ class SpineNetMobile(tf.keras.Model):
           shape=[None, None, None, 3]),
       min_level: int = 3,
       max_level: int = 7,
-      block_specs: Optional[List[BlockSpec]] = None,
+      block_specs: List[BlockSpec] = build_block_specs(),
       endpoints_num_filters: int = 256,
       se_ratio: float = 0.2,
       block_repeats: int = 1,
@@ -187,9 +187,7 @@ class SpineNetMobile(tf.keras.Model):
     self._input_specs = input_specs
     self._min_level = min_level
     self._max_level = max_level
-    self._block_specs = (
-        build_block_specs() if block_specs is None else block_specs
-    )
+    self._block_specs = block_specs
     self._endpoints_num_filters = endpoints_num_filters
     self._se_ratio = se_ratio
     self._block_repeats = block_repeats
@@ -205,7 +203,11 @@ class SpineNetMobile(tf.keras.Model):
     self._norm_epsilon = norm_epsilon
     self._use_keras_upsampling_2d = use_keras_upsampling_2d
     self._num_init_blocks = 2
-    self._norm = layers.BatchNormalization
+
+    if use_sync_bn:
+      self._norm = layers.experimental.SyncBatchNormalization
+    else:
+      self._norm = layers.BatchNormalization
 
     if tf.keras.backend.image_data_format() == 'channels_last':
       self._bn_axis = -1
@@ -218,7 +220,7 @@ class SpineNetMobile(tf.keras.Model):
     net = self._build_stem(inputs=inputs)
     input_width = input_specs.shape[2]
     if input_width is None:
-      max_stride = max(map(lambda b: b.level, self._block_specs))
+      max_stride = max(map(lambda b: b.level, block_specs))
       input_width = 2 ** max_stride
     net = self._build_scale_permuted_network(net=net, input_width=input_width)
     endpoints = self._build_endpoints(net=net)
@@ -241,7 +243,6 @@ class SpineNetMobile(tf.keras.Model):
         in_filters=in_filters,
         out_filters=out_filters,
         strides=strides,
-        se_gating_activation='hard_sigmoid',
         se_ratio=se_ratio,
         expand_ratio=expand_ratio,
         stochastic_depth_drop_rate=stochastic_depth_drop_rate,
@@ -286,8 +287,7 @@ class SpineNetMobile(tf.keras.Model):
     x = self._norm(
         axis=self._bn_axis,
         momentum=self._norm_momentum,
-        epsilon=self._norm_epsilon,
-        synchronized=self._use_sync_bn)(
+        epsilon=self._norm_epsilon)(
             x)
     x = tf_utils.get_activation(self._activation, use_keras_layer=True)(x)
 
@@ -364,21 +364,15 @@ class SpineNetMobile(tf.keras.Model):
         parent_weights = [
             tf.nn.relu(tf.cast(tf.Variable(1.0, name='block{}_fusion{}'.format(
                 i, j)), dtype=dtype)) for j in range(len(parents))]
-        weights_sum = parent_weights[0]
-        for adder in parent_weights[1:]:
-          weights_sum = layers.Add()([weights_sum, adder])
-
+        weights_sum = layers.Add()(parent_weights)
         parents = [
             parents[i] * parent_weights[i] / (weights_sum + 0.0001)
             for i in range(len(parents))
         ]
 
       # Fuse all parent nodes then build a new block.
-      x = parents[0]
-      for adder in parents[1:]:
-        x = layers.Add()([x, adder])
       x = tf_utils.get_activation(
-          self._activation, use_keras_layer=True)(x)
+          self._activation, use_keras_layer=True)(layers.Add()(parents))
       x = self._block_group(
           inputs=x,
           in_filters=target_num_filters,
@@ -425,8 +419,7 @@ class SpineNetMobile(tf.keras.Model):
       x = self._norm(
           axis=self._bn_axis,
           momentum=self._norm_momentum,
-          epsilon=self._norm_epsilon,
-          synchronized=self._use_sync_bn)(
+          epsilon=self._norm_epsilon)(
               x)
       x = tf_utils.get_activation(self._activation, use_keras_layer=True)(x)
       endpoints[str(level)] = x
@@ -451,8 +444,7 @@ class SpineNetMobile(tf.keras.Model):
         x = self._norm(
             axis=self._bn_axis,
             momentum=self._norm_momentum,
-            epsilon=self._norm_epsilon,
-            synchronized=self._use_sync_bn)(
+            epsilon=self._norm_epsilon)(
                 x)
         x = tf_utils.get_activation(
             self._activation, use_keras_layer=True)(x)
@@ -475,8 +467,7 @@ class SpineNetMobile(tf.keras.Model):
     x = self._norm(
         axis=self._bn_axis,
         momentum=self._norm_momentum,
-        epsilon=self._norm_epsilon,
-        synchronized=self._use_sync_bn)(
+        epsilon=self._norm_epsilon)(
             x)
     return x
 

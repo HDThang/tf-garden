@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -91,12 +91,15 @@ class Conv2DBNBlock(tf.keras.layers.Layer):
     self._use_sync_bn = use_sync_bn
     self._norm_momentum = norm_momentum
     self._norm_epsilon = norm_epsilon
-    self._norm = tf.keras.layers.BatchNormalization
 
     if use_explicit_padding and kernel_size > 1:
       self._padding = 'valid'
     else:
       self._padding = 'same'
+    if use_sync_bn:
+      self._norm = tf.keras.layers.experimental.SyncBatchNormalization
+    else:
+      self._norm = tf.keras.layers.BatchNormalization
     if tf.keras.backend.image_data_format() == 'channels_last':
       self._bn_axis = -1
     else:
@@ -138,8 +141,7 @@ class Conv2DBNBlock(tf.keras.layers.Layer):
       self._norm0 = self._norm(
           axis=self._bn_axis,
           momentum=self._norm_momentum,
-          epsilon=self._norm_epsilon,
-          synchronized=self._use_sync_bn)
+          epsilon=self._norm_epsilon)
     self._activation_layer = tf_utils.get_activation(
         self._activation, use_keras_layer=True)
 
@@ -859,7 +861,8 @@ class MobileNet(tf.keras.Model):
           net = block(net)
 
       elif block_def.block_fn == 'gpooling':
-        net = layers.GlobalAveragePooling2D(keepdims=True)(net)
+        net = layers.GlobalAveragePooling2D()(net)
+        net = layers.Reshape((1, 1, net.shape[1]))(net)
 
       else:
         raise ValueError('Unknown block type {} for layer {}'.format(

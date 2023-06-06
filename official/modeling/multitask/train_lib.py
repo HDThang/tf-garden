@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
 """Multitask training driver library."""
 # pytype: disable=attribute-error
 import os
-from typing import Any, List, Mapping, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple
 from absl import logging
 import orbit
 import tensorflow as tf
@@ -44,12 +44,8 @@ def run_experiment(
     mode: str,
     params: configs.MultiTaskExperimentConfig,
     model_dir: str,
-    run_post_eval: bool = False,
-    trainer: base_trainer.MultiTaskBaseTrainer = None,
-    best_ckpt_exporter_creator: Optional[Any] = train_utils
-    .maybe_create_best_ckpt_exporter
-) -> Union[base_model.MultiTaskBaseModel, Tuple[base_model.MultiTaskBaseModel,
-                                                Mapping[Any, Any]]]:
+    trainer: base_trainer.MultiTaskBaseTrainer = None
+) -> base_model.MultiTaskBaseModel:
   """Runs train/eval configured by the experiment params.
 
   Args:
@@ -60,11 +56,8 @@ def run_experiment(
       or 'continuous_eval'.
     params: ExperimentConfig instance.
     model_dir: A 'str', a path to store model checkpoints and summaries.
-    run_post_eval: Whether to run post eval once after training, metrics logs
-      are returned.
     trainer: (optional) A multi-task trainer to use. If none is provided, a
       default one will be created based on `params`.
-    best_ckpt_exporter_creator: A functor for creating best checkpoint exporter.
 
   Returns:
       model: `base_model.MultiTaskBaseModel` instance.
@@ -89,7 +82,8 @@ def run_experiment(
           model=model,
           eval_steps=eval_steps,
           global_step=trainer.global_step if is_training else None,
-          checkpoint_exporter=best_ckpt_exporter_creator(params, model_dir))
+          checkpoint_exporter=train_utils.maybe_create_best_ckpt_exporter(
+              params, model_dir))
     else:
       evaluator = None
 
@@ -100,6 +94,7 @@ def run_experiment(
     checkpoint = evaluator.checkpoint
     global_step = evaluator.global_step
 
+  # TODO(hongkuny,haozhangthu): Revisit initialization method.
   checkpoint_manager = tf.train.CheckpointManager(
       checkpoint,
       directory=model_dir,
@@ -144,11 +139,7 @@ def run_experiment(
     else:
       raise NotImplementedError('The mode is not implemented: %s' % mode)
 
-    if run_post_eval:
-      return model, evaluator.evaluate(
-          tf.convert_to_tensor(params.trainer.validation_steps))  # pytype: disable=bad-return-type  # typed-keras
-    else:
-      return model
+    return model
 
 
 def run_experiment_with_multitask_eval(
@@ -161,10 +152,7 @@ def run_experiment_with_multitask_eval(
     model_dir: str,
     run_post_eval: bool = False,
     save_summary: bool = True,
-    trainer: Optional[core_lib.Trainer] = None,
-    best_ckpt_exporter_creator: Optional[Any] = train_utils
-    .maybe_create_best_ckpt_exporter,
-) -> Tuple[Any, Any]:
+    trainer: Optional[core_lib.Trainer] = None) -> Tuple[Any, Any]:
   """Runs train/eval configured by the experiment params.
 
   Args:
@@ -181,7 +169,6 @@ def run_experiment_with_multitask_eval(
     trainer: the core_lib.Trainer instance. It should be created within the
       strategy.scope(). If not provided, an instance will be created by default
       if `mode` contains 'train'.
-    best_ckpt_exporter_creator: A functor for creating best checkpoint exporter.
 
   Returns:
       model: `tf.keras.Model` instance.
@@ -200,20 +187,7 @@ def run_experiment_with_multitask_eval(
           evaluate=False)
     else:
       trainer = None
-
-    # Build the model or fetch the pre-cached one (which could be either
-    # multi-task model or single task model).
-    model = None
-    if trainer is None:
-      if isinstance(train_task, multitask.MultiTask):
-        model = train_task.build_multitask_model()
-      else:
-        model = train_task.build_model()
-    else:
-      if isinstance(trainer, base_trainer.MultiTaskBaseTrainer):
-        model = trainer.multi_task_model
-      else:
-        model = trainer.model
+    model = trainer.model if trainer else train_task.build_model()
 
     if is_eval:
       eval_steps = dict([(task_routine.task_config.name,
@@ -224,7 +198,8 @@ def run_experiment_with_multitask_eval(
           model=model,
           global_step=trainer.global_step if is_training else None,
           eval_steps=eval_steps,
-          checkpoint_exporter=best_ckpt_exporter_creator(params, model_dir))
+          checkpoint_exporter=train_utils.maybe_create_best_ckpt_exporter(
+              params, model_dir))
     else:
       evaluator = None
 

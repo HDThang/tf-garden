@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,8 +16,6 @@
 # pylint: disable=g-classes-have-attributes
 import collections
 import tensorflow as tf
-
-from official.modeling import tf_utils
 
 
 def _apply_paragraph_mask(logits, paragraph_mask):
@@ -81,7 +79,7 @@ class SpanLabeling(tf.keras.Model):
     # created using the Functional API. Once super().__init__ is called, we
     # can assign attributes to `self` - note that all `self` assignments are
     # below this line.
-    super().__init__(
+    super(SpanLabeling, self).__init__(
         inputs=[sequence_data], outputs=output_tensors, **kwargs)
     config_dict = {
         'input_width': input_width,
@@ -158,12 +156,12 @@ class XLNetSpanLabeling(tf.keras.layers.Layer):
     self._end_n_top = end_n_top
     self.start_logits_dense = tf.keras.layers.Dense(
         units=1,
-        kernel_initializer=tf_utils.clone_initializer(initializer),
+        kernel_initializer=initializer,
         name='predictions/transform/start_logits')
 
     self.end_logits_inner_dense = tf.keras.layers.Dense(
         units=input_width,
-        kernel_initializer=tf_utils.clone_initializer(initializer),
+        kernel_initializer=initializer,
         activation=activation,
         name='predictions/transform/end_logits/inner')
     self.end_logits_layer_norm = tf.keras.layers.LayerNormalization(
@@ -171,18 +169,18 @@ class XLNetSpanLabeling(tf.keras.layers.Layer):
         name='predictions/transform/end_logits/layernorm')
     self.end_logits_output_dense = tf.keras.layers.Dense(
         units=1,
-        kernel_initializer=tf_utils.clone_initializer(initializer),
+        kernel_initializer=initializer,
         name='predictions/transform/end_logits/output')
 
     self.answer_logits_inner = tf.keras.layers.Dense(
         units=input_width,
-        kernel_initializer=tf_utils.clone_initializer(initializer),
+        kernel_initializer=initializer,
         activation=activation,
         name='predictions/transform/answer_logits/inner')
     self.answer_logits_dropout = tf.keras.layers.Dropout(rate=dropout_rate)
     self.answer_logits_output = tf.keras.layers.Dense(
         units=1,
-        kernel_initializer=tf_utils.clone_initializer(initializer),
+        kernel_initializer=initializer,
         use_bias=False,
         name='predictions/transform/answer_logits/output')
 

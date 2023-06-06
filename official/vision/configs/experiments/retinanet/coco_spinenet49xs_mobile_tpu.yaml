@@ -1,5 +1,4 @@
 # --experiment_type=retinanet_mobile_coco
-# COCO mAP: 16.5
 runtime:
   distribution_strategy: 'tpu'
   mixed_precision_dtype: 'bfloat16'
@@ -27,7 +26,7 @@ task:
     max_level: 7
     min_level: 3
     norm_activation:
-      activation: 'hard_swish'
+      activation: 'swish'
       norm_epsilon: 0.001
       norm_momentum: 0.99
       use_sync_bn: true
@@ -41,9 +40,8 @@ task:
       aug_scale_min: 0.5
   validation_data:
     dtype: 'bfloat16'
-    global_batch_size: 256
+    global_batch_size: 8
     is_training: false
-    drop_remainder: false
 trainer:
   checkpoint_interval: 462
   optimizer_config:
@@ -59,4 +57,4 @@ trainer:
   steps_per_loop: 462
   train_steps: 277200
   validation_interval: 462
-  validation_steps: 20
+  validation_steps: 625

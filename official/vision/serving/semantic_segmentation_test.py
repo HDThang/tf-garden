@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,17 +29,11 @@ from official.vision.serving import semantic_segmentation
 
 class SemanticSegmentationExportTest(tf.test.TestCase, parameterized.TestCase):
 
-  def _get_segmentation_module(self,
-                               input_type,
-                               rescale_output,
-                               preserve_aspect_ratio,
-                               batch_size=1):
+  def _get_segmentation_module(self, input_type):
     params = exp_factory.get_exp_config('mnv2_deeplabv3_pascal')
-    params.task.export_config.rescale_output = rescale_output
-    params.task.train_data.preserve_aspect_ratio = preserve_aspect_ratio
     segmentation_module = semantic_segmentation.SegmentationModule(
         params,
-        batch_size=batch_size,
+        batch_size=1,
         input_image_size=[112, 112],
         input_type=input_type)
     return segmentation_module
@@ -49,20 +43,18 @@ class SemanticSegmentationExportTest(tf.test.TestCase, parameterized.TestCase):
         {input_type: 'serving_default'})
     tf.saved_model.save(module, save_directory, signatures=signatures)
 
-  def _get_dummy_input(self, input_type, input_image_size):
+  def _get_dummy_input(self, input_type):
     """Get dummy input for the given input type."""
 
-    height = input_image_size[0]
-    width = input_image_size[1]
     if input_type == 'image_tensor':
-      return tf.zeros((1, height, width, 3), dtype=np.uint8)
+      return tf.zeros((1, 112, 112, 3), dtype=np.uint8)
     elif input_type == 'image_bytes':
-      image = Image.fromarray(np.zeros((height, width, 3), dtype=np.uint8))
+      image = Image.fromarray(np.zeros((112, 112, 3), dtype=np.uint8))
       byte_io = io.BytesIO()
       image.save(byte_io, 'PNG')
       return [byte_io.getvalue()]
     elif input_type == 'tf_example':
-      image_tensor = tf.zeros((height, width, 3), dtype=tf.uint8)
+      image_tensor = tf.zeros((112, 112, 3), dtype=tf.uint8)
       encoded_jpeg = tf.image.encode_jpeg(tf.constant(image_tensor)).numpy()
       example = tf.train.Example(
           features=tf.train.Features(
@@ -73,24 +65,17 @@ class SemanticSegmentationExportTest(tf.test.TestCase, parameterized.TestCase):
               })).SerializeToString()
       return [example]
     elif input_type == 'tflite':
-      return tf.zeros((1, height, width, 3), dtype=np.float32)
+      return tf.zeros((1, 112, 112, 3), dtype=np.float32)
 
   @parameterized.parameters(
-      ('image_tensor', False, [112, 112], False),
-      ('image_bytes', False, [112, 112], False),
-      ('tf_example', False, [112, 112], True),
-      ('tflite', False, [112, 112], False),
-      ('image_tensor', True, [112, 56], True),
-      ('image_bytes', True, [112, 56], True),
-      ('tf_example', True, [56, 112], False),
+      {'input_type': 'image_tensor'},
+      {'input_type': 'image_bytes'},
+      {'input_type': 'tf_example'},
+      {'input_type': 'tflite'},
   )
-  def test_export(self, input_type, rescale_output, input_image_size,
-                  preserve_aspect_ratio):
+  def test_export(self, input_type='image_tensor'):
     tmp_dir = self.get_temp_dir()
-    module = self._get_segmentation_module(
-        input_type=input_type,
-        rescale_output=rescale_output,
-        preserve_aspect_ratio=preserve_aspect_ratio)
+    module = self._get_segmentation_module(input_type)
 
     self._export_from_module(module, input_type, tmp_dir)
 
@@ -105,7 +90,7 @@ class SemanticSegmentationExportTest(tf.test.TestCase, parameterized.TestCase):
     imported = tf.saved_model.load(tmp_dir)
     segmentation_fn = imported.signatures['serving_default']
 
-    images = self._get_dummy_input(input_type, input_image_size)
+    images = self._get_dummy_input(input_type)
     if input_type != 'tflite':
       processed_images, _ = tf.nest.map_structure(
           tf.stop_gradient,
@@ -118,27 +103,11 @@ class SemanticSegmentationExportTest(tf.test.TestCase, parameterized.TestCase):
                                        shape=[4, 2], dtype=tf.float32))))
     else:
       processed_images = images
-
-    logits = module.model(processed_images, training=False)['logits']
-    if rescale_output:
-      expected_output = tf.image.resize(
-          logits, input_image_size, method='bilinear')
-    else:
-      expected_output = tf.image.resize(logits, [112, 112], method='bilinear')
+    expected_output = tf.image.resize(
+        module.model(processed_images, training=False)['logits'], [112, 112],
+        method='bilinear')
     out = segmentation_fn(tf.constant(images))
     self.assertAllClose(out['logits'].numpy(), expected_output.numpy())
-
-  def test_export_invalid_batch_size(self):
-    batch_size = 3
-    tmp_dir = self.get_temp_dir()
-    module = self._get_segmentation_module(
-        input_type='image_tensor',
-        rescale_output=True,
-        preserve_aspect_ratio=False,
-        batch_size=batch_size)
-    with self.assertRaisesRegex(ValueError,
-                                'Batch size cannot be more than 1.'):
-      self._export_from_module(module, 'image_tensor', tmp_dir)
 
 
 if __name__ == '__main__':

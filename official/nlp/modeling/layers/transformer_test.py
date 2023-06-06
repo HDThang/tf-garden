@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 import tensorflow as tf
 
+from tensorflow.python.keras import keras_parameterized  # pylint: disable=g-direct-tensorflow-import
 from official.nlp.modeling.layers import transformer
 
 
@@ -30,7 +31,8 @@ def _create_cache(batch_size, init_decode_length, num_heads, head_size):
   }
 
 
-class TransformerDecoderBlockTest(tf.test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class TransformerDecoderBlockTest(keras_parameterized.TestCase):
 
   def test_decoder_block_with_cache(self):
     num_attention_heads = 2

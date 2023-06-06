@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,9 +24,6 @@ from PIL import Image
 import tensorflow as tf
 
 import multiprocessing as mp
-
-
-LOG_EVERY = 100
 
 
 def convert_to_feature(value, value_type=None):
@@ -117,7 +114,7 @@ def encode_mask_as_png(mask):
 
 def write_tf_record_dataset(output_path, annotation_iterator,
                             process_func, num_shards,
-                            multiple_processes=None, unpack_arguments=True):
+                            use_multiprocessing=True, unpack_arguments=True):
   """Iterates over annotations, processes them and writes into TFRecords.
 
   Args:
@@ -128,10 +125,7 @@ def write_tf_record_dataset(output_path, annotation_iterator,
       annotation_iterator as arguments and returns a tuple of (tf.train.Example,
       int). The integer indicates the number of annotations that were skipped.
     num_shards: int, the number of shards to write for the dataset.
-    multiple_processes: integer, the number of multiple parallel processes to
-      use.  If None, uses multi-processing with number of processes equal to
-      `os.cpu_count()`, which is Python's default behavior. If set to 0,
-      multi-processing is disabled.
+    use_multiprocessing:
       Whether or not to use multiple processes to write TF Records.
     unpack_arguments:
       Whether to unpack the tuples from annotation_iterator as individual
@@ -149,9 +143,8 @@ def write_tf_record_dataset(output_path, annotation_iterator,
 
   total_num_annotations_skipped = 0
 
-  if multiple_processes is None or multiple_processes > 0:
-    pool = mp.Pool(
-        processes=multiple_processes)
+  if use_multiprocessing:
+    pool = mp.Pool()
     if unpack_arguments:
       tf_example_iterator = pool.starmap(process_func, annotation_iterator)
     else:
@@ -164,13 +157,13 @@ def write_tf_record_dataset(output_path, annotation_iterator,
 
   for idx, (tf_example, num_annotations_skipped) in enumerate(
       tf_example_iterator):
-    if idx % LOG_EVERY == 0:
+    if idx % 100 == 0:
       logging.info('On image %d', idx)
 
     total_num_annotations_skipped += num_annotations_skipped
     writers[idx % num_shards].write(tf_example.SerializeToString())
 
-  if multiple_processes is None or multiple_processes > 0:
+  if use_multiprocessing:
     pool.close()
     pool.join()
 

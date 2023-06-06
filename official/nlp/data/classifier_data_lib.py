@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -187,8 +187,6 @@ class AxProcessor(DataProcessor):
 
   def _create_examples_tfds(self, dataset, set_type):
     """Creates examples for the training/dev/test sets."""
-    dataset = list(dataset)
-    dataset.sort(key=lambda x: x["idx"])
     examples = []
     for i, example in enumerate(dataset):
       guid = "%s-%s" % (set_type, i)
@@ -220,8 +218,6 @@ class ColaProcessor(DefaultGLUEDataProcessor):
     """Creates examples for the training/dev/test sets."""
     dataset = tfds.load(
         "glue/cola", split=set_type, try_gcs=True).as_numpy_iterator()
-    dataset = list(dataset)
-    dataset.sort(key=lambda x: x["idx"])
     examples = []
     for i, example in enumerate(dataset):
       guid = "%s-%s" % (set_type, i)
@@ -316,8 +312,6 @@ class MnliProcessor(DataProcessor):
     """Creates examples for the training/dev/test sets."""
     dataset = tfds.load(
         "glue/mnli", split=set_type, try_gcs=True).as_numpy_iterator()
-    dataset = list(dataset)
-    dataset.sort(key=lambda x: x["idx"])
     examples = []
     for i, example in enumerate(dataset):
       guid = "%s-%s" % (set_type, i)
@@ -349,8 +343,6 @@ class MrpcProcessor(DefaultGLUEDataProcessor):
     """Creates examples for the training/dev/test sets."""
     dataset = tfds.load(
         "glue/mrpc", split=set_type, try_gcs=True).as_numpy_iterator()
-    dataset = list(dataset)
-    dataset.sort(key=lambda x: x["idx"])
     examples = []
     for i, example in enumerate(dataset):
       guid = "%s-%s" % (set_type, i)
@@ -461,8 +453,6 @@ class QnliProcessor(DefaultGLUEDataProcessor):
     """Creates examples for the training/dev/test sets."""
     dataset = tfds.load(
         "glue/qnli", split=set_type, try_gcs=True).as_numpy_iterator()
-    dataset = list(dataset)
-    dataset.sort(key=lambda x: x["idx"])
     examples = []
     for i, example in enumerate(dataset):
       guid = "%s-%s" % (set_type, i)
@@ -494,8 +484,6 @@ class QqpProcessor(DefaultGLUEDataProcessor):
     """Creates examples for the training/dev/test sets."""
     dataset = tfds.load(
         "glue/qqp", split=set_type, try_gcs=True).as_numpy_iterator()
-    dataset = list(dataset)
-    dataset.sort(key=lambda x: x["idx"])
     examples = []
     for i, example in enumerate(dataset):
       guid = "%s-%s" % (set_type, i)
@@ -529,8 +517,6 @@ class RteProcessor(DefaultGLUEDataProcessor):
     """Creates examples for the training/dev/test sets."""
     dataset = tfds.load(
         "glue/rte", split=set_type, try_gcs=True).as_numpy_iterator()
-    dataset = list(dataset)
-    dataset.sort(key=lambda x: x["idx"])
     examples = []
     for i, example in enumerate(dataset):
       guid = "%s-%s" % (set_type, i)
@@ -562,8 +548,6 @@ class SstProcessor(DefaultGLUEDataProcessor):
     """Creates examples for the training/dev/test sets."""
     dataset = tfds.load(
         "glue/sst2", split=set_type, try_gcs=True).as_numpy_iterator()
-    dataset = list(dataset)
-    dataset.sort(key=lambda x: x["idx"])
     examples = []
     for i, example in enumerate(dataset):
       guid = "%s-%s" % (set_type, i)
@@ -590,8 +574,6 @@ class StsBProcessor(DefaultGLUEDataProcessor):
     """Creates examples for the training/dev/test sets."""
     dataset = tfds.load(
         "glue/stsb", split=set_type, try_gcs=True).as_numpy_iterator()
-    dataset = list(dataset)
-    dataset.sort(key=lambda x: x["idx"])
     examples = []
     for i, example in enumerate(dataset):
       guid = "%s-%s" % (set_type, i)
@@ -760,8 +742,6 @@ class WnliProcessor(DefaultGLUEDataProcessor):
     """Creates examples for the training/dev/test sets."""
     dataset = tfds.load(
         "glue/wnli", split=set_type, try_gcs=True).as_numpy_iterator()
-    dataset = list(dataset)
-    dataset.sort(key=lambda x: x["idx"])
     examples = []
     for i, example in enumerate(dataset):
       guid = "%s-%s" % (set_type, i)

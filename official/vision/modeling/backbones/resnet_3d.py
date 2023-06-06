@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -145,7 +145,10 @@ class ResNet3D(tf.keras.Model):
     self._activation = activation
     self._norm_momentum = norm_momentum
     self._norm_epsilon = norm_epsilon
-    self._norm = layers.BatchNormalization
+    if use_sync_bn:
+      self._norm = layers.experimental.SyncBatchNormalization
+    else:
+      self._norm = layers.BatchNormalization
     self._kernel_initializer = kernel_initializer
     self._kernel_regularizer = kernel_regularizer
     self._bias_regularizer = bias_regularizer
@@ -229,8 +232,7 @@ class ResNet3D(tf.keras.Model):
       x = self._norm(
           axis=self._bn_axis,
           momentum=self._norm_momentum,
-          epsilon=self._norm_epsilon,
-          synchronized=self._use_sync_bn)(x)
+          epsilon=self._norm_epsilon)(x)
       x = tf_utils.get_activation(self._activation)(x)
     elif stem_type == 'v1':
       x = layers.Conv3D(
@@ -246,8 +248,7 @@ class ResNet3D(tf.keras.Model):
       x = self._norm(
           axis=self._bn_axis,
           momentum=self._norm_momentum,
-          epsilon=self._norm_epsilon,
-          synchronized=self._use_sync_bn)(x)
+          epsilon=self._norm_epsilon)(x)
       x = tf_utils.get_activation(self._activation)(x)
       x = layers.Conv3D(
           filters=32,
@@ -262,8 +263,7 @@ class ResNet3D(tf.keras.Model):
       x = self._norm(
           axis=self._bn_axis,
           momentum=self._norm_momentum,
-          epsilon=self._norm_epsilon,
-          synchronized=self._use_sync_bn)(x)
+          epsilon=self._norm_epsilon)(x)
       x = tf_utils.get_activation(self._activation)(x)
       x = layers.Conv3D(
           filters=64,
@@ -278,8 +278,7 @@ class ResNet3D(tf.keras.Model):
       x = self._norm(
           axis=self._bn_axis,
           momentum=self._norm_momentum,
-          epsilon=self._norm_epsilon,
-          synchronized=self._use_sync_bn)(x)
+          epsilon=self._norm_epsilon)(x)
       x = tf_utils.get_activation(self._activation)(x)
     else:
       raise ValueError(f'Stem type {stem_type} not supported.')

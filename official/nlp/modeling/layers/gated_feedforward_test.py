@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,10 +18,14 @@ from absl.testing import parameterized
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.keras import keras_parameterized  # pylint: disable=g-direct-tensorflow-import
 from official.nlp.modeling.layers import gated_feedforward
 
 
-class GatedFeedforwardTest(tf.test.TestCase, parameterized.TestCase):
+# This decorator runs the test in V1, V2-Eager, and V2-Functional mode. It
+# guarantees forward compatibility of this code for the V2 switchover.
+@keras_parameterized.run_all_keras_modes
+class GatedFeedforwardTest(keras_parameterized.TestCase):
 
   def tearDown(self):
     super(GatedFeedforwardTest, self).tearDown()
@@ -40,8 +44,8 @@ class GatedFeedforwardTest(tf.test.TestCase, parameterized.TestCase):
   def test_layer_creation(self, use_gate, num_blocks, dropout_position, dtype):
     tf.keras.mixed_precision.set_global_policy(dtype)
     kwargs = dict(
-        inner_dim=128,
-        inner_activation="relu",
+        intermediate_size=128,
+        intermediate_activation="relu",
         dropout=0.1,
         use_gate=use_gate,
         num_blocks=num_blocks,
@@ -72,8 +76,8 @@ class GatedFeedforwardTest(tf.test.TestCase, parameterized.TestCase):
                             dtype):
     tf.keras.mixed_precision.set_global_policy(dtype)
     kwargs = dict(
-        inner_dim=16,
-        inner_activation="relu",
+        intermediate_size=16,
+        intermediate_activation="relu",
         dropout=0.1,
         use_gate=use_gate,
         num_blocks=num_blocks,
@@ -100,8 +104,8 @@ class GatedFeedforwardTest(tf.test.TestCase, parameterized.TestCase):
 
   def test_serialize_deserialize(self):
     kwargs = dict(
-        inner_dim=16,
-        inner_activation="relu",
+        intermediate_size=16,
+        intermediate_activation="relu",
         dropout=0.1,
         use_gate=False,
         num_blocks=4,

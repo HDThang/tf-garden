@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,8 +14,6 @@
 
 """Keras-based TransformerEncoder block layer."""
 import tensorflow as tf
-
-from official.modeling import tf_utils
 from official.nlp.modeling.layers import reuse_attention as attention
 
 
@@ -133,8 +131,7 @@ class ReuseTransformer(tf.keras.layers.Layer):
       self._attention_initializer = tf.keras.initializers.get(
           attention_initializer)
     else:
-      self._attention_initializer = tf_utils.clone_initializer(
-          self._kernel_initializer)
+      self._attention_initializer = self._kernel_initializer
     self._attention_axes = attention_axes
 
   def build(self, input_shape):
@@ -159,6 +156,7 @@ class ReuseTransformer(tf.keras.layers.Layer):
     else:
       self._attention_head_size = self._head_size
     common_kwargs = dict(
+        bias_initializer=self._bias_initializer,
         kernel_regularizer=self._kernel_regularizer,
         bias_regularizer=self._bias_regularizer,
         activity_regularizer=self._activity_regularizer,
@@ -170,7 +168,6 @@ class ReuseTransformer(tf.keras.layers.Layer):
         dropout=self._attention_dropout,
         use_bias=self._use_bias,
         kernel_initializer=self._attention_initializer,
-        bias_initializer=tf_utils.clone_initializer(self._bias_initializer),
         attention_axes=self._attention_axes,
         reuse_attention=self._reuse_attention,
         use_relative_pe=self._use_relative_pe,
@@ -187,12 +184,11 @@ class ReuseTransformer(tf.keras.layers.Layer):
             axis=-1,
             epsilon=self._norm_epsilon,
             dtype=tf.float32))
-    self._intermediate_dense = tf.keras.layers.EinsumDense(
+    self._intermediate_dense = tf.keras.layers.experimental.EinsumDense(
         einsum_equation,
         output_shape=(None, self._inner_dim),
         bias_axes="d",
-        kernel_initializer=tf_utils.clone_initializer(self._kernel_initializer),
-        bias_initializer=tf_utils.clone_initializer(self._bias_initializer),
+        kernel_initializer=self._kernel_initializer,
         name="intermediate",
         **common_kwargs)
     policy = tf.keras.mixed_precision.global_policy()
@@ -205,13 +201,12 @@ class ReuseTransformer(tf.keras.layers.Layer):
         self._inner_activation, dtype=policy)
     self._inner_dropout_layer = tf.keras.layers.Dropout(
         rate=self._inner_dropout)
-    self._output_dense = tf.keras.layers.EinsumDense(
+    self._output_dense = tf.keras.layers.experimental.EinsumDense(
         einsum_equation,
         output_shape=(None, hidden_size),
         bias_axes="d",
         name="output",
-        kernel_initializer=tf_utils.clone_initializer(self._kernel_initializer),
-        bias_initializer=tf_utils.clone_initializer(self._bias_initializer),
+        kernel_initializer=self._kernel_initializer,
         **common_kwargs)
     self._output_dropout = tf.keras.layers.Dropout(rate=self._output_dropout)
     # Use float32 in layernorm for numeric stability.

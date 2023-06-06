@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 from typing import Any, Text, Sequence, Union
 
 import tensorflow as tf
-from official.modeling import tf_utils
 
 WEIGHT_INITIALIZER = {
     'Xavier': tf.keras.initializers.GlorotUniform,
@@ -95,8 +94,7 @@ class ParameterizedConvLayer(tf.keras.layers.Layer):
               kernel_size=[self._kernel_size] * 3,
               strides=self._strides,
               dilation_rate=self._rates,
-              kernel_initializer=tf_utils.clone_initializer(
-                  self._kernel_initializer),
+              kernel_initializer=self._kernel_initializer,
           ))
     elif self._conv_type == '2d':
       conv_layer_params.append(
@@ -105,8 +103,7 @@ class ParameterizedConvLayer(tf.keras.layers.Layer):
               kernel_size=[1, self._kernel_size, self._kernel_size],
               strides=[1, self._strides[1], self._strides[2]],
               dilation_rate=[1, self._rates[1], self._rates[2]],
-              kernel_initializer=tf_utils.clone_initializer(
-                  self._kernel_initializer),
+              kernel_initializer=self._kernel_initializer,
           ))
     elif self._conv_type == '1+2d':
       channels_in = input_shape[self._channel_axis]
@@ -116,8 +113,7 @@ class ParameterizedConvLayer(tf.keras.layers.Layer):
               kernel_size=[self._kernel_size, 1, 1],
               strides=[self._strides[0], 1, 1],
               dilation_rate=[self._rates[0], 1, 1],
-              kernel_initializer=tf_utils.clone_initializer(
-                  self._temporal_conv_initializer),
+              kernel_initializer=self._temporal_conv_initializer,
           ))
       conv_layer_params.append(
           dict(
@@ -125,8 +121,7 @@ class ParameterizedConvLayer(tf.keras.layers.Layer):
               kernel_size=[1, self._kernel_size, self._kernel_size],
               strides=[1, self._strides[1], self._strides[2]],
               dilation_rate=[1, self._rates[1], self._rates[2]],
-              kernel_initializer=tf_utils.clone_initializer(
-                  self._kernel_initializer),
+              kernel_initializer=self._kernel_initializer,
           ))
     elif self._conv_type == '2+1d':
       conv_layer_params.append(
@@ -135,8 +130,7 @@ class ParameterizedConvLayer(tf.keras.layers.Layer):
               kernel_size=[1, self._kernel_size, self._kernel_size],
               strides=[1, self._strides[1], self._strides[2]],
               dilation_rate=[1, self._rates[1], self._rates[2]],
-              kernel_initializer=tf_utils.clone_initializer(
-                  self._kernel_initializer),
+              kernel_initializer=self._kernel_initializer,
           ))
       conv_layer_params.append(
           dict(
@@ -144,8 +138,7 @@ class ParameterizedConvLayer(tf.keras.layers.Layer):
               kernel_size=[self._kernel_size, 1, 1],
               strides=[self._strides[0], 1, 1],
               dilation_rate=[self._rates[0], 1, 1],
-              kernel_initializer=tf_utils.clone_initializer(
-                  self._temporal_conv_initializer),
+              kernel_initializer=self._temporal_conv_initializer,
           ))
     elif self._conv_type == '1+1+1d':
       conv_layer_params.append(
@@ -154,8 +147,7 @@ class ParameterizedConvLayer(tf.keras.layers.Layer):
               kernel_size=[1, 1, self._kernel_size],
               strides=[1, 1, self._strides[2]],
               dilation_rate=[1, 1, self._rates[2]],
-              kernel_initializer=tf_utils.clone_initializer(
-                  self._kernel_initializer),
+              kernel_initializer=self._kernel_initializer,
           ))
       conv_layer_params.append(
           dict(
@@ -163,8 +155,7 @@ class ParameterizedConvLayer(tf.keras.layers.Layer):
               kernel_size=[1, self._kernel_size, 1],
               strides=[1, self._strides[1], 1],
               dilation_rate=[1, self._rates[1], 1],
-              kernel_initializer=tf_utils.clone_initializer(
-                  self._kernel_initializer),
+              kernel_initializer=self._kernel_initializer,
           ))
       conv_layer_params.append(
           dict(
@@ -172,8 +163,7 @@ class ParameterizedConvLayer(tf.keras.layers.Layer):
               kernel_size=[self._kernel_size, 1, 1],
               strides=[self._strides[0], 1, 1],
               dilation_rate=[self._rates[0], 1, 1],
-              kernel_initializer=tf_utils.clone_initializer(
-                  self._kernel_initializer),
+              kernel_initializer=self._kernel_initializer,
           ))
     else:
       raise ValueError('Unsupported conv_type: {}'.format(self._conv_type))

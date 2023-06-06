@@ -1,0 +1,5 @@
+image_classification
+resnet_imagenet
+resnet_rs_imagenet
+revnet_imagenet
+mobilenet_imagenet

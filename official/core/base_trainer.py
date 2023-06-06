@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,6 +31,57 @@ from official.modeling import optimization
 
 ExperimentConfig = config_definitions.ExperimentConfig
 TrainerConfig = config_definitions.TrainerConfig
+
+
+class Recovery:
+  """Built-in model blowup recovery module.
+
+  Checks the loss value by the given threshold. If applicable, recover the
+  model by reading the checkpoint on disk.
+  """
+
+  def __init__(self,
+               loss_upper_bound: float,
+               checkpoint_manager: tf.train.CheckpointManager,
+               recovery_begin_steps: int = 0,
+               recovery_max_trials: int = 3):
+    self.recover_counter = 0
+    self.recovery_begin_steps = recovery_begin_steps
+    self.recovery_max_trials = recovery_max_trials
+    self.loss_upper_bound = loss_upper_bound
+    self.checkpoint_manager = checkpoint_manager
+
+  def should_recover(self, loss_value, global_step):
+    if tf.math.is_nan(loss_value):
+      return True
+    if (global_step >= self.recovery_begin_steps and
+        loss_value > self.loss_upper_bound):
+      return True
+    return False
+
+  def maybe_recover(self, loss_value, global_step):
+    """Conditionally recovers the training by triggering checkpoint restoration.
+
+    Args:
+      loss_value: the loss value as a float.
+      global_step: the number of global training steps.
+
+    Raises:
+      RuntimeError: when recovery happens more than the max number of trials,
+      the job should crash.
+    """
+    if not self.should_recover(loss_value, global_step):
+      return
+    self.recover_counter += 1
+    if self.recover_counter > self.recovery_max_trials:
+      raise RuntimeError(
+          "The loss value is NaN or out of range after training loop and "
+          f"this happens {self.recover_counter} times.")
+    # Loads the previous good checkpoint.
+    checkpoint_path = self.checkpoint_manager.restore_or_initialize()
+    logging.warning(
+        "Recovering the model from checkpoint: %s. The loss value becomes "
+        "%f at step %d.", checkpoint_path, loss_value, global_step)
 
 
 class _AsyncTrainer(orbit.StandardTrainer, orbit.StandardEvaluator):
@@ -343,25 +394,6 @@ class Trainer(_AsyncTrainer):
       logs["learning_rate"] = self.optimizer.learning_rate
     return logs
 
-  def next_train_inputs(self, iterator):
-    """Fetches the next inputs for the model during train.
-
-    This method consumes the input iterator and returns the next inputs for the
-    model.
-
-    This method provides a way to control how to fetch the next model input, and
-    what data to send to the model.
-
-    This function runs in eager mode.
-
-    Args:
-      iterator: Dataset iterator to generate the next inputs from.
-
-    Returns:
-      The inputs to the model.
-    """
-    return next(iterator)
-
   def train_step(self, iterator):
     """See base class."""
 
@@ -378,8 +410,8 @@ class Trainer(_AsyncTrainer):
       self._train_loss.update_state(logs[self.task.loss])
       self.global_step.assign_add(1)
 
-    inputs = self.next_train_inputs(iterator)
-    self.strategy.run(step_fn, args=(inputs,), options=self._runtime_options)
+    self.strategy.run(
+        step_fn, args=(next(iterator),), options=self._runtime_options)
 
   def eval_begin(self):
     """Sets up metrics."""
@@ -389,28 +421,6 @@ class Trainer(_AsyncTrainer):
     if self.optimizer and isinstance(self.optimizer,
                                      optimization.ExponentialMovingAverage):
       self.optimizer.swap_weights()
-
-  def next_eval_inputs(self, iterator):
-    """Fetches the next inputs for the model during eval.
-
-    This method consumes the input iterator and returns the next inputs for the
-    model and an additional logs dict. The output dict remains in the host (not
-    sent to GPUs/TPUs) and is merged with the model outputs which will be
-    processed later in `aggregate_logs`. This is useful for sending extra logs
-    downstream that are not compatible with the accelerators.
-
-    This function runs in eager mode.
-
-    Args:
-      iterator: Dataset iterator to generate the next inputs from.
-
-    Returns:
-      The inputs to the model, and an additional logs dictionnary. The logs
-      are not passed to the model, instead they are merged with model output
-      logs.
-    """
-    passthrough_logs = dict()
-    return next(iterator), passthrough_logs
 
   def eval_step(self, iterator):
     """See base class."""
@@ -422,24 +432,9 @@ class Trainer(_AsyncTrainer):
         self._validation_loss.update_state(logs[self.task.loss])
       return logs
 
-    inputs, passthrough_logs = self.next_eval_inputs(iterator)
-    distributed_outputs = self.strategy.run(step_fn, args=(inputs,))
-    logs = tf.nest.map_structure(
-        self.strategy.experimental_local_results, distributed_outputs
-    )
-
-    if set(logs.keys()) & set(passthrough_logs.keys()):
-      logging.warning(
-          (
-              "Conflict between the pasthrough log keys and the returned model"
-              " log keys. Found %r keys in the passthrough logs and %r keys in"
-              " the model logs. Model log keys takes precedence."
-          ),
-          logs.keys(),
-          passthrough_logs.keys(),
-      )
-
-    return passthrough_logs | logs
+    distributed_outputs = self.strategy.run(step_fn, args=(next(iterator),))
+    return tf.nest.map_structure(self.strategy.experimental_local_results,
+                                 distributed_outputs)
 
   def eval_end(self, aggregated_logs=None):
     """Processes evaluation results."""

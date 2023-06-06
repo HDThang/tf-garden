@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,8 +32,7 @@ class ExportModule(export_base.ExportModule, metaclass=abc.ABCMeta):
                input_image_size: List[int],
                input_type: str = 'image_tensor',
                num_channels: int = 3,
-               model: Optional[tf.keras.Model] = None,
-               input_name: Optional[str] = None):
+               model: Optional[tf.keras.Model] = None):
     """Initializes a module for export.
 
     Args:
@@ -44,14 +43,12 @@ class ExportModule(export_base.ExportModule, metaclass=abc.ABCMeta):
       input_type: The input signature type.
       num_channels: The number of the image channels.
       model: A tf.keras.Model instance to be exported.
-      input_name: A customized input tensor name.
     """
     self.params = params
     self._batch_size = batch_size
     self._input_image_size = input_image_size
     self._num_channels = num_channels
     self._input_type = input_type
-    self._input_name = input_name
     if model is None:
       model = self._build_model()  # pylint: disable=assignment-from-none
     super().__init__(params=params, model=model)
@@ -96,9 +93,6 @@ class ExportModule(export_base.ExportModule, metaclass=abc.ABCMeta):
     parsed_tensors = tf.io.parse_single_example(
         serialized=tf_example_string_tensor, features=keys_to_features)
     image_tensor = self._decode_image(parsed_tensors['image/encoded'])
-    image_tensor.set_shape(
-        [None] * len(self._input_image_size) + [self._num_channels]
-    )
     return image_tensor
 
   def _build_model(self, **kwargs):
@@ -169,20 +163,19 @@ class ExportModule(export_base.ExportModule, metaclass=abc.ABCMeta):
         input_signature = tf.TensorSpec(
             shape=[self._batch_size] + [None] * len(self._input_image_size) +
             [self._num_channels],
-            dtype=tf.uint8,
-            name=self._input_name)
+            dtype=tf.uint8)
         signatures[
             def_name] = self.inference_from_image_tensors.get_concrete_function(
                 input_signature)
       elif key == 'image_bytes':
         input_signature = tf.TensorSpec(
-            shape=[self._batch_size], dtype=tf.string, name=self._input_name)
+            shape=[self._batch_size], dtype=tf.string)
         signatures[
             def_name] = self.inference_from_image_bytes.get_concrete_function(
                 input_signature)
       elif key == 'serve_examples' or key == 'tf_example':
         input_signature = tf.TensorSpec(
-            shape=[self._batch_size], dtype=tf.string, name=self._input_name)
+            shape=[self._batch_size], dtype=tf.string)
         signatures[
             def_name] = self.inference_from_tf_example.get_concrete_function(
                 input_signature)
@@ -190,8 +183,7 @@ class ExportModule(export_base.ExportModule, metaclass=abc.ABCMeta):
         input_signature = tf.TensorSpec(
             shape=[self._batch_size] + self._input_image_size +
             [self._num_channels],
-            dtype=tf.float32,
-            name=self._input_name)
+            dtype=tf.float32)
         signatures[def_name] = self.inference_for_tflite.get_concrete_function(
             input_signature)
       else:

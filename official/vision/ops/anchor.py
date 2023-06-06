@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
 """Anchor box and labeler definition."""
 
 import collections
-from typing import Dict, Optional, Tuple
 
 # Import libraries
 
@@ -66,7 +65,7 @@ class Anchor(object):
     self.image_size = image_size
     self.boxes = self._generate_boxes()
 
-  def _generate_boxes(self) -> tf.Tensor:
+  def _generate_boxes(self):
     """Generates multiscale anchor boxes.
 
     Returns:
@@ -101,7 +100,7 @@ class Anchor(object):
       boxes_all.append(boxes_l)
     return tf.concat(boxes_all, axis=0)
 
-  def unpack_labels(self, labels: tf.Tensor) -> Dict[str, tf.Tensor]:
+  def unpack_labels(self, labels):
     """Unpacks an array of labels into multiscales labels."""
     unpacked_labels = collections.OrderedDict()
     count = 0
@@ -147,24 +146,17 @@ class AnchorLabeler(object):
         force_match_for_each_col=True)
     self.box_coder = faster_rcnn_box_coder.FasterRcnnBoxCoder()
 
-  def label_anchors(
-      self,
-      anchor_boxes: Dict[str, tf.Tensor],
-      gt_boxes: tf.Tensor,
-      gt_labels: tf.Tensor,
-      gt_attributes: Optional[Dict[str, tf.Tensor]] = None,
-      gt_weights: Optional[tf.Tensor] = None
-  ) -> Tuple[Dict[str, tf.Tensor], Dict[str, tf.Tensor], Dict[str, Dict[
-      str, tf.Tensor]], tf.Tensor, tf.Tensor]:
+  def label_anchors(self,
+                    anchor_boxes,
+                    gt_boxes,
+                    gt_labels,
+                    gt_attributes=None,
+                    gt_weights=None):
     """Labels anchors with ground truth inputs.
 
     Args:
-      anchor_boxes: An ordered dictionary with keys
-        [min_level, min_level+1, ..., max_level]. The values are tensor with
-        shape [height_l, width_l, num_anchors_per_location * 4]. The height_l
-        and width_l represent the dimension of the feature pyramid at l-th
-        level. For each anchor box, the tensor stores [y0, x0, y1, x1] for the
-        four corners.
+      anchor_boxes: A float tensor with shape [N, 4] representing anchor boxes.
+        For each row, it stores [y0, x0, y1, x1] for four corners of a box.
       gt_boxes: A float tensor with shape [N, 4] representing groundtruth boxes.
         For each row, it stores [y0, x0, y1, x1] for four corners of a box.
       gt_labels: A integer tensor with shape [N, 1] representing groundtruth
@@ -174,29 +166,30 @@ class AnchorLabeler(object):
         representing groundtruth attributes.
       gt_weights: If not None, a float tensor with shape [N] representing
         groundtruth weights.
-
     Returns:
-      cls_targets_dict: An ordered dictionary with keys
+      cls_targets_dict: ordered dictionary with keys
         [min_level, min_level+1, ..., max_level]. The values are tensor with
         shape [height_l, width_l, num_anchors_per_location]. The height_l and
         width_l represent the dimension of class logits at l-th level.
-      box_targets_dict: An ordered dictionary with keys
+      box_targets_dict: ordered dictionary with keys
         [min_level, min_level+1, ..., max_level]. The values are tensor with
         shape [height_l, width_l, num_anchors_per_location * 4]. The height_l
         and width_l represent the dimension of bounding box regression output at
         l-th level.
-      attribute_targets_dict: A dict with (name, attribute_targets) pairs. Each
+      attribute_targets_dict: a dict with (name, attribute_targets) pairs. Each
         `attribute_targets` represents an ordered dictionary with keys
         [min_level, min_level+1, ..., max_level]. The values are tensor with
         shape [height_l, width_l, num_anchors_per_location * attribute_size].
         The height_l and width_l represent the dimension of attribute prediction
         output at l-th level.
-      cls_weights: A flattened Tensor with shape [num_anchors], that serves as
-        masking / sample weight for classification loss. Its value is 1.0 for
-        positive and negative matched anchors, and 0.0 for ignored anchors.
-      box_weights: A flattened Tensor with shape [num_anchors], that serves as
-        masking / sample weight for regression loss. Its value is 1.0 for
-        positive matched anchors, and 0.0 for negative and ignored anchors.
+      cls_weights: A flattened Tensor with shape [batch_size, num_anchors], that
+        serves as masking / sample weight for classification loss. Its value
+        is 1.0 for positive and negative matched anchors, and 0.0 for ignored
+        anchors.
+      box_weights: A flattened Tensor with shape [batch_size, num_anchors], that
+        serves as masking / sample weight for regression loss. Its value is
+        1.0 for positive matched anchors, and 0.0 for negative and ignored
+        anchors.
     """
     flattened_anchor_boxes = []
     for anchors in anchor_boxes.values():
@@ -217,41 +210,24 @@ class AnchorLabeler(object):
         att_mask = tf.tile(cls_mask, [1, att_size])
         att_targets[k] = self.target_gather(v, match_indices, att_mask, 0.0)
 
-    # When there is no ground truth labels, we force the weight to be 1 so that
-    # negative matched anchors get non-zero weights.
-    num_gt_labels = tf.shape(gt_labels)[0]
-    weights = tf.cond(
-        tf.greater(num_gt_labels, 0),
-        lambda: tf.squeeze(tf.ones_like(gt_labels, dtype=tf.float32), -1),
-        lambda: tf.ones([1], dtype=tf.float32),
-    )
+    weights = tf.squeeze(tf.ones_like(gt_labels, dtype=tf.float32), -1)
     if gt_weights is not None:
-      weights = tf.cond(
-          tf.greater(num_gt_labels, 0),
-          lambda: tf.math.multiply(weights, gt_weights),
-          lambda: weights,
-      )
+      weights = tf.math.multiply(weights, gt_weights)
     box_weights = self.target_gather(weights, match_indices, mask)
     ignore_mask = tf.equal(match_indicators, -2)
     cls_weights = self.target_gather(weights, match_indices, ignore_mask)
-    box_targets = box_list.BoxList(box_targets)
-    anchor_box = box_list.BoxList(flattened_anchor_boxes)
-    box_targets = self.box_coder.encode(box_targets, anchor_box)
+    box_targets_list = box_list.BoxList(box_targets)
+    anchor_box_list = box_list.BoxList(flattened_anchor_boxes)
+    box_targets = self.box_coder.encode(box_targets_list, anchor_box_list)
 
     # Unpacks labels into multi-level representations.
-    cls_targets = unpack_targets(cls_targets, anchor_boxes)
-    box_targets = unpack_targets(box_targets, anchor_boxes)
-    attribute_targets = {
-        k: unpack_targets(v, anchor_boxes) for k, v in att_targets.items()
-    }
+    cls_targets_dict = unpack_targets(cls_targets, anchor_boxes)
+    box_targets_dict = unpack_targets(box_targets, anchor_boxes)
+    attribute_targets_dict = {}
+    for k, v in att_targets.items():
+      attribute_targets_dict[k] = unpack_targets(v, anchor_boxes)
 
-    return (
-        cls_targets,
-        box_targets,
-        attribute_targets,
-        cls_weights,
-        box_weights,
-    )
+    return cls_targets_dict, box_targets_dict, attribute_targets_dict, cls_weights, box_weights
 
 
 class RpnAnchorLabeler(AnchorLabeler):
@@ -310,33 +286,25 @@ class RpnAnchorLabeler(AnchorLabeler):
     return (ignore_labels + positive_labels + negative_labels,
             positive_labels, negative_labels)
 
-  def label_anchors(  # pytype: disable=signature-mismatch  # overriding-parameter-count-checks
-      self, anchor_boxes: Dict[str, tf.Tensor], gt_boxes: tf.Tensor,
-      gt_labels: tf.Tensor
-  ) -> Tuple[Dict[str, tf.Tensor], Dict[str, tf.Tensor]]:
+  def label_anchors(self, anchor_boxes, gt_boxes, gt_labels):
     """Labels anchors with ground truth inputs.
 
     Args:
-      anchor_boxes: An ordered dictionary with keys
-        [min_level, min_level+1, ..., max_level]. The values are tensor with
-        shape [height_l, width_l, num_anchors_per_location * 4]. The height_l
-        and width_l represent the dimension of the feature pyramid at l-th
-        level. For each anchor box, the tensor stores [y0, x0, y1, x1] for the
-        four corners.
+      anchor_boxes: A float tensor with shape [N, 4] representing anchor boxes.
+        For each row, it stores [y0, x0, y1, x1] for four corners of a box.
       gt_boxes: A float tensor with shape [N, 4] representing groundtruth boxes.
         For each row, it stores [y0, x0, y1, x1] for four corners of a box.
       gt_labels: A integer tensor with shape [N, 1] representing groundtruth
         classes.
-
     Returns:
-      score_targets_dict: An ordered dictionary with keys
+      score_targets_dict: ordered dictionary with keys
         [min_level, min_level+1, ..., max_level]. The values are tensor with
-        shape [height_l, width_l, num_anchors_per_location]. The height_l and
-        width_l represent the dimension of class logits at l-th level.
-      box_targets_dict: An ordered dictionary with keys
+        shape [height_l, width_l, num_anchors]. The height_l and width_l
+        represent the dimension of class logits at l-th level.
+      box_targets_dict: ordered dictionary with keys
         [min_level, min_level+1, ..., max_level]. The values are tensor with
-        shape [height_l, width_l, num_anchors_per_location * 4]. The height_l
-        and width_l represent the dimension of bounding box regression output at
+        shape [height_l, width_l, num_anchors * 4]. The height_l and
+        width_l represent the dimension of bounding box regression output at
         l-th level.
     """
     flattened_anchor_boxes = []
@@ -394,27 +362,8 @@ def build_anchor_generator(min_level, max_level, num_scales, aspect_ratios,
   return anchor_gen
 
 
-def unpack_targets(
-    targets: tf.Tensor,
-    anchor_boxes_dict: Dict[str, tf.Tensor]) -> Dict[str, tf.Tensor]:
-  """Unpacks an array of labels into multiscales labels.
-
-  Args:
-    targets: A tensor with shape [num_anchors, M] representing the packed
-      targets with M values stored for each anchor.
-    anchor_boxes_dict: An ordered dictionary with keys
-      [min_level, min_level+1, ..., max_level]. The values are tensor with shape
-      [height_l, width_l, num_anchors_per_location * 4]. The height_l and
-      width_l represent the dimension of the feature pyramid at l-th level. For
-      each anchor box, the tensor stores [y0, x0, y1, x1] for the four corners.
-
-  Returns:
-    unpacked_targets: An ordered dictionary with keys
-      [min_level, min_level+1, ..., max_level]. The values are tensor with shape
-      [height_l, width_l, num_anchors_per_location * M]. The height_l and
-      width_l represent the dimension of the feature pyramid at l-th level. M is
-      the number of values stored for each anchor.
-  """
+def unpack_targets(targets, anchor_boxes_dict):
+  """Unpacks an array of labels into multiscales labels."""
   unpacked_targets = collections.OrderedDict()
   count = 0
   for level, anchor_boxes in anchor_boxes_dict.items():

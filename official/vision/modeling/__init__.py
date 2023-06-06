@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,4 +18,3 @@ from official.vision.modeling import backbones
 from official.vision.modeling import decoders
 from official.vision.modeling import heads
 from official.vision.modeling import layers
-from official.vision.modeling import models

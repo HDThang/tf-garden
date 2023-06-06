@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,11 +17,16 @@
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.keras import keras_parameterized  # pylint: disable=g-direct-tensorflow-import
+
 from official.nlp.modeling.layers import masked_lm
 from official.nlp.modeling.networks import bert_encoder
 
 
-class MaskedLMTest(tf.test.TestCase):
+# This decorator runs the test in V1, V2-Eager, and V2-Functional mode. It
+# guarantees forward compatibility of this code for the V2 switchover.
+@keras_parameterized.run_all_keras_modes
+class MaskedLMTest(keras_parameterized.TestCase):
 
   def create_layer(self,
                    vocab_size,

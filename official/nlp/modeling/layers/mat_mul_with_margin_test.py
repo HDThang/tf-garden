@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,10 +16,11 @@
 
 import tensorflow as tf
 
+from tensorflow.python.keras import keras_parameterized  # pylint: disable=g-direct-tensorflow-import
 from official.nlp.modeling.layers import mat_mul_with_margin
 
 
-class MatMulWithMarginTest(tf.test.TestCase):
+class MatMulWithMarginTest(keras_parameterized.TestCase):
 
   def test_layer_invocation(self):
     """Validate that the Keras object can be created and invoked."""
